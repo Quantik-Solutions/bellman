@@ -1,2 +1,2 @@
-mod prover;
 mod generator;
+mod prover;

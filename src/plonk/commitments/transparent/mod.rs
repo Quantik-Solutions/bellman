@@ -1,23 +1,23 @@
 use crate::pairing::ff::PrimeField;
 
-use crate::plonk::polynomials::*;
-use crate::multicore::Worker;
 use super::CommitmentScheme;
+use crate::multicore::Worker;
+use crate::plonk::polynomials::*;
 
-pub mod precomputations;
-pub mod iop;
 pub mod fri;
+pub mod iop;
 pub mod iop_compiler;
+pub mod precomputations;
 
 pub mod utils;
 
 use self::precomputations::PrecomputedInvOmegas;
-use crate::plonk::domains::*;
 use crate::plonk::commitments::transcript::Prng;
+use crate::plonk::commitments::transcript::*;
 use crate::plonk::commitments::transparent::fri::*;
 use crate::plonk::commitments::transparent::iop::*;
-use crate::plonk::commitments::transcript::*;
-use crate::plonk::fft::cooley_tukey_ntt::{CTPrecomputations, BitReversedOmegas};
+use crate::plonk::domains::*;
+use crate::plonk::fft::cooley_tukey_ntt::{BitReversedOmegas, CTPrecomputations};
 
 // Such committer uses external transcript for all the operations
 pub struct StatelessTransparentCommitter<
@@ -48,22 +48,22 @@ impl<
 }
 
 #[derive(Debug)]
-pub struct TransparentCommitterParameters<F: PrimeField, FRI: FriIop<F>>{
-    pub lde_factor: usize,
-    pub num_queries: usize,
-    pub output_coeffs_at_degree_plus_one: usize,
-    pub fri_params: <FRI as FriIop<F>>::Params,
+pub struct TransparentCommitterParameters<F: PrimeField, FRI: FriIop<F>> {
+  pub lde_factor: usize,
+  pub num_queries: usize,
+  pub output_coeffs_at_degree_plus_one: usize,
+  pub fri_params: <FRI as FriIop<F>>::Params,
 }
 
 impl<F: PrimeField, FRI: FriIop<F>> Clone for TransparentCommitterParameters<F, FRI> {
-    fn clone(&self) -> Self {
-        TransparentCommitterParameters::<F, FRI>{
-            lde_factor: self.lde_factor,
-            num_queries: self.num_queries,
-            output_coeffs_at_degree_plus_one: self.output_coeffs_at_degree_plus_one,
-            fri_params: self.fri_params.clone(),
-        }
+  fn clone(&self) -> Self {
+    TransparentCommitterParameters::<F, FRI> {
+      lde_factor: self.lde_factor,
+      num_queries: self.num_queries,
+      output_coeffs_at_degree_plus_one: self.output_coeffs_at_degree_plus_one,
+      fri_params: self.fri_params.clone(),
     }
+  }
 }
 
 use std::time::Instant;
@@ -579,164 +579,174 @@ impl<
     }
 }
 
-
 // use single threaded Kate division for now
-fn kate_divison_with_same_return_size<F: PrimeField>(a: &[F], mut b: F) -> Vec<F>
-{
-    b.negate();
+fn kate_divison_with_same_return_size<F: PrimeField>(a: &[F], mut b: F) -> Vec<F> {
+  b.negate();
 
-    let mut q = vec![F::zero(); a.len()];
+  let mut q = vec![F::zero(); a.len()];
 
-    let mut tmp = F::zero();
-    let mut found_one = false;
-    for (q, r) in q.iter_mut().rev().skip(1).zip(a.iter().rev()) {
-        if !found_one {
-            if r.is_zero() {
-                continue
-            } else {
-                found_one = true;
-            }
-        }
-
-        let mut lead_coeff = *r;
-        lead_coeff.sub_assign(&tmp);
-        *q = lead_coeff;
-        tmp = lead_coeff;
-        tmp.mul_assign(&b);
+  let mut tmp = F::zero();
+  let mut found_one = false;
+  for (q, r) in q.iter_mut().rev().skip(1).zip(a.iter().rev()) {
+    if !found_one {
+      if r.is_zero() {
+        continue;
+      } else {
+        found_one = true;
+      }
     }
 
-    q
+    let mut lead_coeff = *r;
+    lead_coeff.sub_assign(&tmp);
+    *q = lead_coeff;
+    tmp = lead_coeff;
+    tmp.mul_assign(&b);
+  }
+
+  q
 }
 
 // this one is not ZK cause will expose values not from LDE, but from the original domain too
 fn bytes_to_challenge_index<S: AsRef<[u8]>>(bytes: S, lde_size: usize) -> usize {
-    use byteorder::{BigEndian, ByteOrder};
+  use byteorder::{BigEndian, ByteOrder};
 
-    let as_ref = bytes.as_ref();
-    let natural_x_index = BigEndian::read_u64(&as_ref[(as_ref.len() - 8)..]);
+  let as_ref = bytes.as_ref();
+  let natural_x_index = BigEndian::read_u64(&as_ref[(as_ref.len() - 8)..]);
 
-    let natural_x_index = natural_x_index as usize;
-    let natural_x_index = natural_x_index % lde_size;
+  let natural_x_index = natural_x_index as usize;
+  let natural_x_index = natural_x_index % lde_size;
 
-    natural_x_index
+  natural_x_index
 }
-
 
 #[cfg(test)]
 mod test {
 
-    use super::*;
-    use crate::pairing::ff::{Field, PrimeField};
+  use super::*;
+  use crate::pairing::ff::{Field, PrimeField};
 
-    use crate::{SynthesisError};
-    use std::marker::PhantomData;
+  use crate::SynthesisError;
+  use std::marker::PhantomData;
 
-    use crate::plonk::utils::*;
-    use crate::plonk::commitments::transparent::fri::*;
-    use crate::plonk::commitments::transparent::iop::*;
-    use crate::plonk::commitments::transcript::*;
-    use crate::plonk::commitments::transparent::fri::naive_fri::naive_fri::*;
-    use crate::plonk::commitments::transparent::iop::blake2s_trivial_iop::*;
-    use crate::plonk::commitments::*;
-    
+  use crate::plonk::commitments::transcript::*;
+  use crate::plonk::commitments::transparent::fri::naive_fri::naive_fri::*;
+  use crate::plonk::commitments::transparent::fri::*;
+  use crate::plonk::commitments::transparent::iop::blake2s_trivial_iop::*;
+  use crate::plonk::commitments::transparent::iop::*;
+  use crate::plonk::commitments::*;
+  use crate::plonk::utils::*;
 
-    #[test]
-    fn test_small_transparent_commitment() {
-        use crate::pairing::bn256::{Bn256, Fr};
+  #[test]
+  fn test_small_transparent_commitment() {
+    use crate::pairing::bn256::{Bn256, Fr};
 
-        const SIZE:usize = 16;
+    const SIZE: usize = 16;
 
-        let worker = Worker::new();
+    let worker = Worker::new();
 
-        // let coeffs: Vec<_> = (0..SIZE).collect();
-        // let coeffs: Vec<_> = vec![1, 1, 0, 0, 0, 0, 0, 0];
-        let coeffs: Vec<_> = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
-        let coeffs = convert_to_field_elements(&coeffs, &worker);
-        let poly = Polynomial::<Fr, _>::from_coeffs(coeffs).unwrap();
+    // let coeffs: Vec<_> = (0..SIZE).collect();
+    // let coeffs: Vec<_> = vec![1, 1, 0, 0, 0, 0, 0, 0];
+    let coeffs: Vec<_> = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+    let coeffs = convert_to_field_elements(&coeffs, &worker);
+    let poly = Polynomial::<Fr, _>::from_coeffs(coeffs).unwrap();
 
-        let mut transcript = Blake2sTranscript::<Fr>::new();
+    let mut transcript = Blake2sTranscript::<Fr>::new();
 
-        type Iop = TrivialBlake2sIOP<Fr>;
-        type Fri = NaiveFriIop<Fr, Iop>;
-        type Committer = StatelessTransparentCommitter<Fr, Fri, Blake2sTranscript<Fr>>;
+    type Iop = TrivialBlake2sIOP<Fr>;
+    type Fri = NaiveFriIop<Fr, Iop>;
+    type Committer = StatelessTransparentCommitter<Fr, Fri, Blake2sTranscript<Fr>>;
 
-        let meta = TransparentCommitterParameters {
-            lde_factor: 16,
-            num_queries: 2,
-            output_coeffs_at_degree_plus_one: 1,
-            fri_params: ()
-        };
+    let meta = TransparentCommitterParameters {
+      lde_factor: 16,
+      num_queries: 2,
+      output_coeffs_at_degree_plus_one: 1,
+      fri_params: (),
+    };
 
-        let committer = <Committer as CommitmentScheme<Fr>>::new_for_size(SIZE, meta);
+    let committer = <Committer as CommitmentScheme<Fr>>::new_for_size(SIZE, meta);
 
-        let (commitment, aux_data) = committer.commit_single(&poly);
+    let (commitment, aux_data) = committer.commit_single(&poly);
 
-        let open_at = Fr::from_str("123").unwrap();
+    let open_at = Fr::from_str("123").unwrap();
 
-        let expected_at_z = poly.evaluate_at(&worker, open_at);
+    let expected_at_z = poly.evaluate_at(&worker, open_at);
 
-        let proof = committer.open_single(&poly, open_at, expected_at_z, &aux_data.as_ref(), &mut transcript);
+    let proof = committer.open_single(
+      &poly,
+      open_at,
+      expected_at_z,
+      &aux_data.as_ref(),
+      &mut transcript,
+    );
 
-        let mut transcript = Blake2sTranscript::<Fr>::new();
+    let mut transcript = Blake2sTranscript::<Fr>::new();
 
-        let valid = committer.verify_single(&commitment, open_at, expected_at_z, &proof, &mut transcript);
+    let valid =
+      committer.verify_single(&commitment, open_at, expected_at_z, &proof, &mut transcript);
 
-        assert!(valid);
-    }
+    assert!(valid);
+  }
 
-    #[test]
-    fn test_large_transparent_commitment() {
-        use std::time::Instant;
-        use crate::pairing::bn256::{Bn256, Fr};
+  #[test]
+  fn test_large_transparent_commitment() {
+    use crate::pairing::bn256::{Bn256, Fr};
+    use std::time::Instant;
 
-        let worker = Worker::new();
+    let worker = Worker::new();
 
-        const SIZE:usize = 1 << 20;
-        // const SIZE:usize = 1 << 10;
+    const SIZE: usize = 1 << 20;
+    // const SIZE:usize = 1 << 10;
 
-        let coeffs: Vec<_> = (0..SIZE).collect();
-        let coeffs = convert_to_field_elements(&coeffs, &worker);
-        let poly = Polynomial::<Fr, _>::from_coeffs(coeffs).unwrap();
+    let coeffs: Vec<_> = (0..SIZE).collect();
+    let coeffs = convert_to_field_elements(&coeffs, &worker);
+    let poly = Polynomial::<Fr, _>::from_coeffs(coeffs).unwrap();
 
-        let mut transcript = Blake2sTranscript::<Fr>::new();
+    let mut transcript = Blake2sTranscript::<Fr>::new();
 
-        type Iop = TrivialBlake2sIOP<Fr>;
-        type Fri = NaiveFriIop<Fr, Iop>;
-        type Committer = StatelessTransparentCommitter<Fr, Fri, Blake2sTranscript<Fr>>;
+    type Iop = TrivialBlake2sIOP<Fr>;
+    type Fri = NaiveFriIop<Fr, Iop>;
+    type Committer = StatelessTransparentCommitter<Fr, Fri, Blake2sTranscript<Fr>>;
 
-        let meta = TransparentCommitterParameters {
-            lde_factor: 16,
-            num_queries: 6, // ~100 bits of security
-            output_coeffs_at_degree_plus_one: 16,
-            fri_params: ()
-        };
+    let meta = TransparentCommitterParameters {
+      lde_factor: 16,
+      num_queries: 6, // ~100 bits of security
+      output_coeffs_at_degree_plus_one: 16,
+      fri_params: (),
+    };
 
-        let committer = <Committer as CommitmentScheme<Fr>>::new_for_size(SIZE, meta);
+    let committer = <Committer as CommitmentScheme<Fr>>::new_for_size(SIZE, meta);
 
-        let now = Instant::now();
+    let now = Instant::now();
 
-        let (commitment, aux_data) = committer.commit_single(&poly);
+    let (commitment, aux_data) = committer.commit_single(&poly);
 
-        println!("Commitment taken {:?}", now.elapsed());
+    println!("Commitment taken {:?}", now.elapsed());
 
-        let open_at = Fr::from_str("123").unwrap();
+    let open_at = Fr::from_str("123").unwrap();
 
-        let expected_at_z = poly.evaluate_at(&worker, open_at);
+    let expected_at_z = poly.evaluate_at(&worker, open_at);
 
-        let now = Instant::now();
+    let now = Instant::now();
 
-        let proof = committer.open_single(&poly, open_at, expected_at_z, &aux_data.as_ref(), &mut transcript);
+    let proof = committer.open_single(
+      &poly,
+      open_at,
+      expected_at_z,
+      &aux_data.as_ref(),
+      &mut transcript,
+    );
 
-        println!("Opening taken {:?}", now.elapsed());
+    println!("Opening taken {:?}", now.elapsed());
 
-        let mut transcript = Blake2sTranscript::<Fr>::new();
+    let mut transcript = Blake2sTranscript::<Fr>::new();
 
-        let now = Instant::now();
+    let now = Instant::now();
 
-        let valid = committer.verify_single(&commitment, open_at, expected_at_z, &proof, &mut transcript);
+    let valid =
+      committer.verify_single(&commitment, open_at, expected_at_z, &proof, &mut transcript);
 
-        println!("Verification taken {:?}", now.elapsed());
+    println!("Verification taken {:?}", now.elapsed());
 
-        assert!(valid);
-    }
+    assert!(valid);
+  }
 }
