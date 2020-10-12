@@ -97,7 +97,7 @@ const EMPTY_PARAMS: Params = Params::new_for_implementation(Implementation(Platf
   not(all(target_feature = "sse4.1")),
   not
 ))]
-const EMPTY_PARAMS: Params = Params::new_for_implementation(Implementation(Platform::P));
+const EMPTY_PARAMS: Params = Params::new_for_implementation(Implementation(Platform::Portable));
 
 const EMPTY_WORDS: [Word; 8] = EMPTY_PARAMS.empty_words();
 
