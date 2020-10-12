@@ -90,11 +90,14 @@ const EMPTY_PARAMS: Params = Params::new_for_implementation(Implementation(Platf
 const EMPTY_PARAMS: Params = Params::new_for_implementation(Implementation(Platform::SSE41));
 
 #[cfg(any(
-  not(all(target_arch = "x86", target_arch = "x86_64")),
+  not(all(
+    any(target_arch = "x86", target_arch = "x86_64"),
+    target_feature = "sse4.1"
+  )),
   not(all(target_feature = "sse4.1")),
   not
 ))]
-const EMPTY_PARAMS: Params = Params::new_for_implementation(Implementation(Platform::Portable));
+const EMPTY_PARAMS: Params = Params::new_for_implementation(Implementation(Platform::P));
 
 const EMPTY_WORDS: [Word; 8] = EMPTY_PARAMS.empty_words();
 
