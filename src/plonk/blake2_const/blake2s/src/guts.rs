@@ -15,7 +15,7 @@ pub const MAX_DEGREE: usize = 1;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Platform {
   Portable,
-  // #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+  #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
   SSE41,
   #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
   AVX2,
@@ -40,36 +40,46 @@ impl Implementation {
         return sse41_impl;
       }
     }
-    // return sse41_impl;
-
     Self::portable()
   }
 
-  pub const fn portable() -> Self {
+  pub fn portable() -> Self {
     Implementation(Platform::Portable)
   }
 
   #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
   #[allow(unreachable_code)]
-  pub const fn sse41_if_supported() -> Option<Self> {
+  pub fn sse41_if_supported() -> Option<Self> {
     // Check whether SSE4.1 support is assumed by the build.
     #[cfg(target_feature = "sse4.1")]
     {
       return Some(Implementation(Platform::SSE41));
     }
-
+    // Otherwise dynamically check for support if we can.
+    #[cfg(feature = "std")]
+    {
+      if is_x86_feature_detected!("sse4.1") {
+        return Some(Implementation(Platform::SSE41));
+      }
+    }
     None
   }
 
   #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
   #[allow(unreachable_code)]
-  pub const fn avx2_if_supported() -> Option<Self> {
+  pub fn avx2_if_supported() -> Option<Self> {
     // Check whether AVX2 support is assumed by the build.
     #[cfg(target_feature = "avx2")]
     {
       return Some(Implementation(Platform::AVX2));
     }
-
+    // Otherwise dynamically check for support if we can.
+    #[cfg(feature = "std")]
+    {
+      if is_x86_feature_detected!("avx2") {
+        return Some(Implementation(Platform::AVX2));
+      }
+    }
     None
   }
 
@@ -174,7 +184,8 @@ impl LastNode {
 
 #[derive(Clone, Copy, Debug)]
 pub enum Stride {
-  Serial,   // BLAKE2b/BLAKE2s
+  Serial,
+  // BLAKE2b/BLAKE2s
   Parallel, // BLAKE2bp/BLAKE2sp
 }
 
